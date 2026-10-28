@@ -24,8 +24,11 @@ def extract_cld_from_pdf(pdf_source: Union[str, bytes], filename: str) -> Dict[s
     else:
         doc = pymupdf.open(pdf_source)
         
-    page = doc[0] # Drawings are typically 1 page
-    full_text = page.get_text()
+    try:
+        page = doc[0] # Drawings are typically 1 page
+        full_text = page.get_text()
+    finally:
+        doc.close()
     
     # 1. Extract CLD File number
     # Priority A: From filename (e.g. ET-D-01_M3-M4_2010301.pdf -> 2010301, 2010508A)

@@ -549,7 +549,16 @@
                     body: JSON.stringify({ gdrive_url: url })
                 });
 
-                const data = await response.json();
+                let data;
+                try {
+                    data = await response.json();
+                } catch (parseErr) {
+                    if (response.status === 524 || response.status === 504) {
+                        throw new Error('การประมวลผลหมดเวลา (Timeout) เนื่องจากโฟลเดอร์ Google Drive นี้มีไฟล์จำนวนมากเกินไป (2,000+ ไฟล์) แนะนำให้คลิกขวาที่โฟลเดอร์ใน Google Drive แล้วกด "ดาวน์โหลด" เพื่อให้ได้ไฟล์ .ZIP แล้วนำมาลากวางที่ช่อง "2. อัปโหลดตรงผ่านคอมพิวเตอร์" ด้านขวาได้ทันทีครับ');
+                    }
+                    throw new Error(`เซิร์ฟเวอร์ส่งการตอบกลับที่ไม่ถูกต้อง (${response.status}) โฟลเดอร์อาจมีไฟล์มากเกินไป แนะนำให้อัปโหลดเป็นไฟล์ .ZIP`);
+                }
+
                 if (!response.ok) {
                     throw new Error(data.detail || 'เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Drive');
                 }
@@ -583,7 +592,16 @@
                     body: formData
                 });
 
-                const data = await response.json();
+                let data;
+                try {
+                    data = await response.json();
+                } catch (parseErr) {
+                    if (response.status === 524 || response.status === 504) {
+                        throw new Error('การประมวลผลหมดเวลา (Timeout) บน Cloudflare แนะนำให้ตรวจสอบหรือลองอัปโหลดใหม่อีกครั้ง');
+                    }
+                    throw new Error(`เซิร์ฟเวอร์ส่งการตอบกลับที่ไม่ถูกต้อง (${response.status})`);
+                }
+
                 if (!response.ok) {
                     throw new Error(data.detail || 'เกิดข้อผิดพลาดในการอัปโหลดและสแกน');
                 }

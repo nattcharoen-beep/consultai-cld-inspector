@@ -219,6 +219,14 @@ def download_from_gdrive_folder(
             logger.warning("ไม่พบไฟล์นามสกุล .pdf หรือ .zip ในโฟลเดอร์ Google Drive ที่ระบุ")
             return []
 
+        if len(target_items) > 150:
+            raise RuntimeError(
+                f"ตรวจพบไฟล์ Drawing มากถึง {len(target_items)} รายการในโฟลเดอร์ Google Drive นี้ "
+                f"ซึ่งเกินขีดจำกัดการดึงไฟล์ทีละไฟล์ของ Google (ระบบความปลอดภัยของ Google จะบล็อกการโหลดเกิน 100 ไฟล์) "
+                f"\n💡 แนะนำวิธีที่เร็วและเสร็จใน 15 วินาที: ให้คลิกขวาที่โฟลเดอร์ใน Google Drive แล้วกด 'ดาวน์โหลด (Download)' "
+                f"เพื่อรับไฟล์ .ZIP ทั้งหมด แล้วนำไฟล์ .ZIP มาลากวางในช่อง '2. อัปโหลดตรงผ่านคอมพิวเตอร์' ด้านขวาได้ทันทีครับ"
+            )
+
         # ตัดจำนวนถ้ามี max_files
         if max_files and max_files > 0:
             target_items = target_items[:max_files]

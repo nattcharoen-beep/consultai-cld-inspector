@@ -193,6 +193,8 @@ async def scan_gdrive(request: Request):
         raise HTTPException(status_code=403, detail=str(pe))
     except FileNotFoundError as fe:
         raise HTTPException(status_code=404, detail=str(fe))
+    except RuntimeError as re:
+        raise HTTPException(status_code=400, detail=str(re))
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Drive: {str(e)}")
