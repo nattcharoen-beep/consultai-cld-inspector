@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="th" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ConsultAI: CLD & Position Code Inspector</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Prompt & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'Inter', 'sans-serif'],
+                        mono: ['Inter', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            200: '#bae0fd',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#1F4E79', // Consultant Navy
+                            800: '#163a5c',
+                            900: '#0f2942',
+                        },
+                        emerald: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Prompt', 'Inter', sans-serif;
+        }
+        .drag-active {
+            border-color: #0284c7 !important;
+            background-color: #f0f7ff !important;
+            transform: scale(1.01);
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="min-h-full flex flex-col text-slate-800 antialiased selection:bg-brand-100 selection:text-brand-900">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-700 to-sky-500 flex items-center justify-center text-white shadow-md shadow-brand-700/20">
+                    <i data-lucide="cpu" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="font-bold text-lg text-slate-900 tracking-tight">ConsultAI</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">CLD Inspector</span>
+                    </div>
+                    <p class="text-xs text-slate-500 hidden sm:block">ระบบตรวจสอบคัดกรอง IO CLD / NOT IO CLD & Model Card อัจฉริยะ</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button onclick="runSampleDemo()" class="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:text-brand-700 hover:border-brand-300 hover:bg-brand-50 transition-colors">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-500"></i>
+                    <span>ทดลองสแกนไฟล์ตัวอย่าง</span>
+                </button>
+                <div class="h-4 w-px bg-slate-200"></div>
+                <div class="flex items-center gap-2 text-xs text-emerald-600 font-medium bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span>AI Engine พร้อมใช้งาน</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+        <!-- Hero Header -->
+        <div class="text-center max-w-3xl mx-auto space-y-2">
+            <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                เครื่องมือคัดกรองแบบแปลนวงจรลอจิกอัตโนมัติ
+            </h1>
+            <p class="text-sm sm:text-base text-slate-600 font-light">
+                แยกแยะแบบ Drawing CLD ทั่วไป กับ <span class="font-semibold text-emerald-700">IO CLD</span> สกัดรหัสตำแหน่ง (CLD_No 1-2-3) พร้อมตรวจหารุ่น Model Card และส่งออกรายงาน Excel ทันที
+            </p>
+        </div>
+
+        <!-- Notification / Alert Box -->
+        <div id="alertBox" class="hidden transition-all duration-300">
+            <div id="alertContent" class="p-4 rounded-xl flex items-start gap-3 shadow-xs">
+                <!-- Dynamically injected -->
+            </div>
+        </div>
+
+        <!-- Dual Input Section (Google Drive & Direct Drag-and-Drop) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+            
+            <!-- Method 1: Google Drive Folder Sync -->
+            <div class="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between hover:border-slate-300 transition-all">
+                <div class="space-y-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center">
+                            <i data-lucide="folder-git-2" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900">1. ดึงไฟล์จาก Google Drive</h2>
+                            <p class="text-xs text-slate-500">วางลิงก์โฟลเดอร์ Google Drive ที่แชร์ไว้ เพื่อให้ระบบเข้าไปสแกนอัตโนมัติ</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label for="gdriveUrl" class="block text-xs font-semibold text-slate-700">
+                            ลิงก์ Google Drive Folder หรือไฟล์ ZIP / PDF:
+                        </label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <i data-lucide="link-2" class="w-4 h-4"></i>
+                            </div>
+                            <input 
+                                type="url" 
+                                id="gdriveUrl" 
+                                placeholder="https://drive.google.com/drive/folders/1aBcDeFgHi..." 
+                                class="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white transition-all text-slate-800 placeholder-slate-400"
+                            >
+                        </div>
+                        <p class="text-[11px] text-slate-400 flex items-center gap-1">
+                            <i data-lucide="info" class="w-3 h-3"></i>
+                            <span>คำแนะนำ: โฟลเดอร์ต้องเปิดสิทธิ์ <strong>"ทุกคนที่มีลิงก์ (Anyone with the link can view)"</strong></span>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="pt-5 mt-4 border-t border-slate-100">
+                    <button 
+                        id="btnGdriveScan" 
+                        onclick="startGdriveScan()" 
+                        class="w-full py-3 px-4 rounded-xl bg-brand-700 hover:bg-brand-800 active:scale-[0.99] text-white font-medium text-sm flex items-center justify-center gap-2 shadow-sm transition-all"
+                    >
+                        <i data-lucide="scan" class="w-4 h-4"></i>
+                        <span>1. อัพไฟล์ใหม่ลง Google Drive แล้ว (เริ่มสแกน)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Method 2: Direct Drag & Drop Files / Zip -->
+            <div class="lg:col-span-6 bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between hover:border-slate-300 transition-all">
+                <div class="space-y-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center">
+                            <i data-lucide="cloud-upload" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-base font-bold text-slate-900">2. อัปโหลดตรงผ่านคอมพิวเตอร์</h2>
+                            <p class="text-xs text-slate-500">ลากไฟล์ PDF หลายไฟล์ หรือไฟล์ ZIP บรรจุแบบ Drawing มาวางได้ทันที</p>
+                        </div>
+                    </div>
+
+                    <!-- Dropzone -->
+                    <div 
+                        id="dropzone" 
+                        onclick="document.getElementById('fileInput').click()"
+                        class="border-2 border-dashed border-slate-200 hover:border-brand-500 hover:bg-brand-50/40 rounded-xl p-5 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center gap-2 bg-slate-50/50 min-h-[120px]"
+                    >
+                        <input type="file" id="fileInput" multiple accept=".pdf,.zip" class="hidden" onchange="handleFileSelect(event)">
+                        <div class="w-10 h-10 rounded-full bg-white shadow-xs border border-slate-200 flex items-center justify-center text-brand-600">
+                            <i data-lucide="files" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs sm:text-sm font-medium text-slate-700">
+                                ลากไฟล์มาวางที่นี่ หรือ <span class="text-brand-600 hover:underline">คลิกเลือกไฟล์</span>
+                            </p>
+                            <p class="text-[11px] text-slate-400 mt-0.5">รองรับไฟล์ PDF หลายไฟล์พร้อมกัน และไฟล์บีบอัด .ZIP</p>
+                        </div>
+                    </div>
+
+                    <!-- Selected Files Info Badge -->
+                    <div id="selectedFilesInfo" class="hidden text-xs text-slate-600 flex items-center justify-between bg-slate-100 px-3 py-2 rounded-lg">
+                        <div class="flex items-center gap-2 truncate">
+                            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600 shrink-0"></i>
+                            <span id="selectedFilesText" class="truncate font-medium">เลือกแล้ว 0 ไฟล์</span>
+                        </div>
+                        <button onclick="clearSelectedFiles(event)" class="text-slate-400 hover:text-rose-500 shrink-0 text-[11px] underline">ยกเลิก</button>
+                    </div>
+                </div>
+
+                <div class="pt-5 mt-4 border-t border-slate-100">
+                    <button 
+                        id="btnUploadScan" 
+                        onclick="startDirectUploadScan()" 
+                        disabled
+                        class="w-full py-3 px-4 rounded-xl bg-slate-200 text-slate-400 font-medium text-sm flex items-center justify-center gap-2 transition-all cursor-not-allowed"
+                    >
+                        <i data-lucide="arrow-up-circle" class="w-4 h-4"></i>
+                        <span>เริ่มสแกนไฟล์ที่เลือก</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Loading & Progress State Section -->
+        <div id="loadingSection" class="hidden bg-white rounded-2xl p-8 border border-slate-200 shadow-sm text-center space-y-4">
+            <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-50 text-brand-600 animate-spin">
+                <i data-lucide="loader-2" class="w-7 h-7"></i>
+            </div>
+            <div class="max-w-md mx-auto space-y-1">
+                <h3 id="loadingTitle" class="text-base font-bold text-slate-900">กำลังประมวลผล Drawing PDF...</h3>
+                <p id="loadingDesc" class="text-xs text-slate-500">ระบบกำลังสกัด Position Code และวิเคราะห์ Model Card อย่างละเอียด</p>
+            </div>
+            <!-- Progress Bar -->
+            <div class="max-w-md mx-auto w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div id="progressBar" class="bg-gradient-to-r from-brand-600 to-emerald-500 h-2 rounded-full w-1/3 animate-pulse transition-all duration-500"></div>
+            </div>
+        </div>
+
+        <!-- Results Section (KPIs, Download CTA, & Data Table) -->
+        <div id="resultsSection" class="hidden space-y-6">
+
+            <!-- Primary Action Banner: Download Excel CTA -->
+            <div class="bg-gradient-to-r from-brand-800 via-brand-700 to-slate-900 rounded-2xl p-6 sm:p-8 text-white shadow-xl shadow-brand-900/10 flex flex-col md:flex-row items-center justify-between gap-6 border border-brand-800">
+                <div class="space-y-1 text-center md:text-left">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold mb-1 border border-emerald-500/30">
+                        <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                        <span>สแกนข้อมูลสำเร็จเรียบร้อยแล้ว</span>
+                    </div>
+                    <h3 class="text-xl sm:text-2xl font-bold tracking-tight">รายงานผลการคัดกรอง Control Logic Diagrams</h3>
+                    <p class="text-xs sm:text-sm text-slate-300 font-light">สามารถดาวน์โหลดไฟล์สรุปในรูปแบบ Excel พร้อมจัดหน้าสวยงามได้ทันที</p>
+                </div>
+
+                <div class="shrink-0 w-full md:w-auto">
+                    <a 
+                        id="btnDownloadExcel" 
+                        href="#" 
+                        class="w-full md:w-auto inline-flex items-center justify-center gap-3 px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 active:scale-95 text-white font-bold text-base shadow-lg shadow-emerald-900/30 transition-all duration-200"
+                    >
+                        <i data-lucide="file-spreadsheet" class="w-6 h-6"></i>
+                        <span>2. ดาวน์โหลดไฟล์ Excel ผลลัพธ์ (.xlsx)</span>
+                    </a>
+                </div>
+            </div>
+
+            <!-- KPI Metric Cards -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                <!-- Card 1: Total Files -->
+                <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500">จำนวนไฟล์ทั้งหมด</p>
+                        <p id="kpiTotal" class="text-2xl font-bold text-slate-900 mt-1">0</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">ไฟล์ที่นำเข้าสู่ระบบ</p>
+                    </div>
+                    <div class="w-11 h-11 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center">
+                        <i data-lucide="file-text" class="w-5 h-5"></i>
+                    </div>
+                </div>
+
+                <!-- Card 2: IO CLD Count -->
+                <div class="bg-white rounded-xl p-5 border border-emerald-100 shadow-xs flex items-center justify-between bg-emerald-50/20">
+                    <div>
+                        <p class="text-xs font-medium text-emerald-700">พบเป็น IO CLD</p>
+                        <p id="kpiIoCld" class="text-2xl font-bold text-emerald-600 mt-1">0</p>
+                        <p class="text-[11px] text-emerald-600/70 mt-0.5">มี Position Code ครบถ้วน</p>
+                    </div>
+                    <div class="w-11 h-11 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <i data-lucide="check-circle" class="w-5 h-5"></i>
+                    </div>
+                </div>
+
+                <!-- Card 3: NOT IO CLD Count -->
+                <div class="bg-white rounded-xl p-5 border border-slate-200 shadow-xs flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500">NOT IO CLD</p>
+                        <p id="kpiNotIoCld" class="text-2xl font-bold text-slate-600 mt-1">0</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">แบบลอจิกคอนโทรลทั่วไป</p>
+                    </div>
+                    <div class="w-11 h-11 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center">
+                        <i data-lucide="minus-circle" class="w-5 h-5"></i>
+                    </div>
+                </div>
+
+                <!-- Card 4: IO Ratio -->
+                <div class="bg-white rounded-xl p-5 border border-brand-100 shadow-xs flex items-center justify-between bg-brand-50/20">
+                    <div>
+                        <p class="text-xs font-medium text-brand-700">สัดส่วน IO CLD</p>
+                        <p id="kpiRatio" class="text-2xl font-bold text-brand-700 mt-1">0%</p>
+                        <p class="text-[11px] text-brand-600/70 mt-0.5">ของแบบ Drawing ทั้งหมด</p>
+                    </div>
+                    <div class="w-11 h-11 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center">
+                        <i data-lucide="pie-chart" class="w-5 h-5"></i>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Data Table Preview Card -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                
+                <!-- Table Header Controls (Search & Filter Tabs) -->
+                <div class="p-5 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50">
+                    <div>
+                        <h4 class="text-base font-bold text-slate-900">ตารางพรีวิวผลลัพธ์การคัดกรอง</h4>
+                        <p class="text-xs text-slate-500">ตรวจสอบความถูกต้องของรหัส CLD, Position No. และ Model Card ที่สกัดได้</p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                        <!-- Filter Tabs -->
+                        <div class="inline-flex p-1 rounded-xl bg-slate-200/70 text-xs font-medium text-slate-600">
+                            <button id="filterAll" onclick="setFilter('all')" class="px-3 py-1.5 rounded-lg bg-white text-slate-900 shadow-xs transition-all">ทั้งหมด</button>
+                            <button id="filterIO" onclick="setFilter('IO CLD')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition-all">เฉพาะ IO CLD</button>
+                            <button id="filterNotIO" onclick="setFilter('NOT IO CLD')" class="px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition-all">NOT IO CLD</button>
+                        </div>
+
+                        <!-- Quick Search -->
+                        <div class="relative w-full sm:w-56">
+                            <i data-lucide="search" class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input 
+                                type="text" 
+                                id="tableSearch" 
+                                placeholder="ค้นหาชื่อไฟล์ หรือรหัส..." 
+                                oninput="filterTableData()"
+                                class="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-hidden"
+                            >
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Table Content -->
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-100/70 border-b border-slate-200 text-slate-700 uppercase font-semibold">
+                            <tr>
+                                <th class="py-3 px-4 w-12 text-center">#</th>
+                                <th class="py-3 px-4">Source File (ชื่อไฟล์)</th>
+                                <th class="py-3 px-4 text-center">CLD File</th>
+                                <th class="py-3 px-4 text-center">CLD_No1</th>
+                                <th class="py-3 px-4 text-center">CLD_No2</th>
+                                <th class="py-3 px-4 text-center">CLD_No3</th>
+                                <th class="py-3 px-4 text-center">Model Card</th>
+                                <th class="py-3 px-4 text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-slate-100 text-slate-600">
+                            <!-- Populated dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Empty state for table -->
+                <div id="tableEmptyState" class="hidden py-12 text-center text-slate-400 text-xs">
+                    <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i>
+                    <p>ไม่พบรายการที่ตรงกับเงื่อนไขการค้นหา</p>
+                </div>
+
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-slate-200 mt-12 py-6 text-center text-xs text-slate-400">
+        <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+                <span class="font-bold text-slate-700">ConsultAI CLD Inspector</span>
+                <span>•</span>
+                <span>ระบบออโตเมชันคัดกรองแบบแปลนวิศวกรรม</span>
+            </div>
+            <p>Developed with FastAPI & Python Automation</p>
+        </div>
+    </footer>
+
+    <!-- Frontend Logic Scripts -->
+    <script>
+        // Global state
+        let currentResults = [];
+        let activeFilter = 'all';
+        let selectedFiles = [];
+
+        // Initialize Lucide icons on load
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            setupDropzone();
+        });
+
+        // Setup Drag & Drop Handlers
+        function setupDropzone() {
+            const dropzone = document.getElementById('dropzone');
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropzone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropzone.classList.add('drag-active');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropzone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    dropzone.classList.remove('drag-active');
+                }, false);
+            });
+
+            dropzone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                if (dt.files && dt.files.length > 0) {
+                    processFiles(dt.files);
+                }
+            });
+        }
+
+        function handleFileSelect(e) {
+            if (e.target.files && e.target.files.length > 0) {
+                processFiles(e.target.files);
+            }
+        }
+
+        function processFiles(fileList) {
+            selectedFiles = Array.from(fileList);
+            const btnUploadScan = document.getElementById('btnUploadScan');
+            const filesInfo = document.getElementById('selectedFilesInfo');
+            const filesText = document.getElementById('selectedFilesText');
+
+            if (selectedFiles.length > 0) {
+                filesText.textContent = `เลือกแล้ว ${selectedFiles.length} ไฟล์ (${selectedFiles.map(f => f.name).slice(0, 2).join(', ')}${selectedFiles.length > 2 ? ' ...' : ''})`;
+                filesInfo.classList.remove('hidden');
+                
+                btnUploadScan.disabled = false;
+                btnUploadScan.classList.remove('bg-slate-200', 'text-slate-400', 'cursor-not-allowed');
+                btnUploadScan.classList.add('bg-brand-700', 'hover:bg-brand-800', 'text-white', 'shadow-sm', 'cursor-pointer');
+            } else {
+                clearSelectedFiles();
+            }
+            lucide.createIcons();
+        }
+
+        function clearSelectedFiles(e) {
+            if (e) e.stopPropagation();
+            selectedFiles = [];
+            document.getElementById('fileInput').value = '';
+            document.getElementById('selectedFilesInfo').classList.add('hidden');
+            
+            const btn = document.getElementById('btnUploadScan');
+            btn.disabled = true;
+            btn.classList.add('bg-slate-200', 'text-slate-400', 'cursor-not-allowed');
+            btn.classList.remove('bg-brand-700', 'hover:bg-brand-800', 'text-white', 'shadow-sm', 'cursor-pointer');
+        }
+
+        // Alert message helper
+        function showAlert(type, title, message) {
+            const box = document.getElementById('alertBox');
+            const content = document.getElementById('alertContent');
+            
+            box.classList.remove('hidden');
+            if (type === 'error') {
+                content.className = 'p-4 rounded-xl flex items-start gap-3 shadow-xs bg-rose-50 text-rose-800 border border-rose-200';
+                content.innerHTML = `
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-600 shrink-0 mt-0.5"></i>
+                    <div class="flex-1 text-xs">
+                        <strong class="font-bold text-sm block mb-0.5">${title}</strong>
+                        ${message}
+                    </div>
+                    <button onclick="hideAlert()" class="text-rose-400 hover:text-rose-700"><i data-lucide="x" class="w-4 h-4"></i></button>
+                `;
+            } else if (type === 'success') {
+                content.className = 'p-4 rounded-xl flex items-start gap-3 shadow-xs bg-emerald-50 text-emerald-800 border border-emerald-200';
+                content.innerHTML = `
+                    <i data-lucide="check-circle" class="w-5 h-5 text-emerald-600 shrink-0 mt-0.5"></i>
+                    <div class="flex-1 text-xs">
+                        <strong class="font-bold text-sm block mb-0.5">${title}</strong>
+                        ${message}
+                    </div>
+                    <button onclick="hideAlert()" class="text-emerald-400 hover:text-emerald-700"><i data-lucide="x" class="w-4 h-4"></i></button>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        function hideAlert() {
+            document.getElementById('alertBox').classList.add('hidden');
+        }
+
+        // Show/Hide Loading
+        function showLoading(title, desc) {
+            hideAlert();
+            document.getElementById('loadingSection').classList.remove('hidden');
+            document.getElementById('loadingTitle').textContent = title || 'กำลังประมวลผล Drawing PDF...';
+            document.getElementById('loadingDesc').textContent = desc || 'ระบบกำลังสกัด Position Code และวิเคราะห์ Model Card อย่างละเอียด';
+            document.getElementById('resultsSection').classList.add('hidden');
+            
+            // Disable scan buttons during execution
+            document.getElementById('btnGdriveScan').disabled = true;
+            document.getElementById('btnUploadScan').disabled = true;
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingSection').classList.add('hidden');
+            document.getElementById('btnGdriveScan').disabled = false;
+            if (selectedFiles.length > 0) {
+                document.getElementById('btnUploadScan').disabled = false;
+            }
+        }
+
+        // 1. Google Drive Scan Trigger
+        async function startGdriveScan() {
+            const urlInput = document.getElementById('gdriveUrl');
+            const url = urlInput.value.trim();
+
+            if (!url) {
+                showAlert('error', 'กรุณาระบุลิงก์ Google Drive', 'กรุณาวางลิงก์โฟลเดอร์ Google Drive ก่อนกดเริ่มสแกน');
+                urlInput.focus();
+                return;
+            }
+
+            showLoading('กำลังเชื่อมต่อ Google Drive...', 'กำลังดาวน์โหลดไฟล์ Drawing PDF จากโฟลเดอร์ที่ระบุ และทำการตรวจสอบเนื้อหา...');
+
+            try {
+                const response = await fetch('/api/scan-gdrive', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ gdrive_url: url })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || 'เกิดข้อผิดพลาดในการดึงข้อมูลจาก Google Drive');
+                }
+
+                renderResults(data);
+                showAlert('success', 'สแกน Google Drive สำเร็จ', `ตรวจพบ Drawing ทั้งหมด ${data.kpi.total} ไฟล์ (เป็น IO CLD: ${data.kpi.io_cld} ไฟล์)`);
+            } catch (err) {
+                showAlert('error', 'ไม่สามารถสแกน Google Drive ได้', err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 2. Direct Upload Scan Trigger
+        async function startDirectUploadScan() {
+            if (selectedFiles.length === 0) {
+                showAlert('error', 'ไม่มีไฟล์ที่เลือก', 'กรุณาลากหรือเลือกไฟล์ PDF / ZIP ก่อนกดสแกน');
+                return;
+            }
+
+            showLoading('กำลังอัปโหลดและวิเคราะห์ Drawing...', `กำลังสแกนไฟล์ทั้งหมด ${selectedFiles.length} รายการผ่าน AI Engine...`);
+
+            const formData = new FormData();
+            for (let file of selectedFiles) {
+                formData.append('files', file);
+            }
+
+            try {
+                const response = await fetch('/api/scan-upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || 'เกิดข้อผิดพลาดในการอัปโหลดและสแกน');
+                }
+
+                renderResults(data);
+                showAlert('success', 'สแกนไฟล์อัปโหลดสำเร็จ', `ตรวจพบ Drawing ทั้งหมด ${data.kpi.total} ไฟล์ (เป็น IO CLD: ${data.kpi.io_cld} ไฟล์)`);
+            } catch (err) {
+                showAlert('error', 'การสแกนล้มเหลว', err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // 3. Quick Demo Sample Scan Trigger
+        async function runSampleDemo() {
+            showLoading('กำลังทดสอบสแกนไฟล์ตัวอย่าง...', 'กำลังโหลดแบบ Drawing ตัวอย่าง 9 รายการจากชุดทดสอบ consultai...');
+            try {
+                const response = await fetch('/api/demo-sample');
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.detail || 'ไม่สามารถโหลดชุดไฟล์ตัวอย่างได้');
+                }
+                renderResults(data);
+                showAlert('success', 'ทดสอบสแกนไฟล์ตัวอย่างเรียบร้อย', `สแกนแบบตัวอย่าง 9 รายการเสร็จสมบูรณ์ พร้อมดาวน์โหลด Excel ผลลัพธ์`);
+            } catch (err) {
+                showAlert('error', 'เกิดข้อผิดพลาดในการโหลดตัวอย่าง', err.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Render Results into UI
+        function renderResults(data) {
+            currentResults = data.results || [];
+            
+            // Set KPIs
+            document.getElementById('kpiTotal').textContent = data.kpi.total || 0;
+            document.getElementById('kpiIoCld').textContent = data.kpi.io_cld || 0;
+            document.getElementById('kpiNotIoCld').textContent = data.kpi.not_io_cld || 0;
+            document.getElementById('kpiRatio').textContent = data.kpi.io_percentage || '0%';
+
+            // Set Download Link Button
+            const btnDownload = document.getElementById('btnDownloadExcel');
+            btnDownload.href = data.download_url;
+            btnDownload.setAttribute('download', data.filename || 'Result_CLD_Inspection.xlsx');
+
+            // Render Table
+            renderTableRows(currentResults);
+
+            // Show Results Section
+            document.getElementById('resultsSection').classList.remove('hidden');
+            
+            // Smooth scroll to results
+            document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            lucide.createIcons();
+        }
+
+        // Render Table Rows with styling
+        function renderTableRows(items) {
+            const tbody = document.getElementById('tableBody');
+            const emptyState = document.getElementById('tableEmptyState');
+            tbody.innerHTML = '';
+
+            if (!items || items.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+
+            items.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50/80 transition-colors duration-150';
+
+                const isIo = item.Status === 'IO CLD';
+                const statusBadge = isIo 
+                    ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                         <i data-lucide="check" class="w-3 h-3 text-emerald-600"></i> IO CLD
+                       </span>`
+                    : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                         <i data-lucide="minus" class="w-3 h-3 text-slate-400"></i> NOT IO CLD
+                       </span>`;
+
+                const modelBadge = (item['Model Card'] && item['Model Card'] !== 'N/A')
+                    ? `<span class="px-2 py-0.5 rounded-md font-mono text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200">${item['Model Card']}</span>`
+                    : `<span class="text-slate-400 font-mono text-[11px]">-</span>`;
+
+                tr.innerHTML = `
+                    <td class="py-3 px-4 text-center font-mono text-slate-400 text-[11px]">${index + 1}</td>
+                    <td class="py-3 px-4 font-medium text-slate-900 flex items-center gap-2">
+                        <i data-lucide="file" class="w-4 h-4 text-rose-500 shrink-0"></i>
+                        <span class="truncate max-w-xs sm:max-w-md">${item['Source File'] || '-'}</span>
+                    </td>
+                    <td class="py-3 px-4 text-center font-mono font-semibold text-brand-800">${item['CLD file'] || '-'}</td>
+                    <td class="py-3 px-4 text-center font-mono font-bold ${isIo ? 'text-slate-800' : 'text-slate-400'}">${item['CLD_No1'] || '-'}</td>
+                    <td class="py-3 px-4 text-center font-mono font-bold ${isIo ? 'text-slate-800' : 'text-slate-400'}">${item['CLD_No2'] || '-'}</td>
+                    <td class="py-3 px-4 text-center font-mono font-bold ${isIo ? 'text-slate-800' : 'text-slate-400'}">${item['CLD_No3'] || '-'}</td>
+                    <td class="py-3 px-4 text-center">${modelBadge}</td>
+                    <td class="py-3 px-4 text-center">${statusBadge}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            lucide.createIcons();
+        }
+
+        // Table Filtering & Search
+        function setFilter(filterType) {
+            activeFilter = filterType;
+            
+            // Update button styles
+            const btns = {
+                'all': document.getElementById('filterAll'),
+                'IO CLD': document.getElementById('filterIO'),
+                'NOT IO CLD': document.getElementById('filterNotIO')
+            };
+
+            Object.keys(btns).forEach(key => {
+                if (key === filterType) {
+                    btns[key].className = 'px-3 py-1.5 rounded-lg bg-white text-slate-900 shadow-xs transition-all font-semibold';
+                } else {
+                    btns[key].className = 'px-3 py-1.5 rounded-lg text-slate-600 hover:text-slate-900 transition-all';
+                }
+            });
+
+            filterTableData();
+        }
+
+        function filterTableData() {
+            const query = (document.getElementById('tableSearch').value || '').toLowerCase().trim();
+            
+            let filtered = currentResults.filter(item => {
+                // Status filter
+                if (activeFilter !== 'all' && item.Status !== activeFilter) {
+                    return false;
+                }
+                // Text search
+                if (query) {
+                    const src = (item['Source File'] || '').toLowerCase();
+                    const cld = (item['CLD file'] || '').toLowerCase();
+                    const card = (item['Model Card'] || '').toLowerCase();
+                    return src.includes(query) || cld.includes(query) || card.includes(query);
+                }
+                return true;
+            });
+
+            renderTableRows(filtered);
+        }
+    </script>
+</body>
+</html>
