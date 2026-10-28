@@ -27,6 +27,7 @@ def extract_cld_from_pdf(pdf_source: Union[str, bytes], filename: str) -> Dict[s
     try:
         page = doc[0] # Drawings are typically 1 page
         full_text = page.get_text()
+        blocks = page.get_text("blocks")
     finally:
         doc.close()
     
@@ -42,18 +43,46 @@ def extract_cld_from_pdf(pdf_source: Union[str, bytes], filename: str) -> Dict[s
             doc_no_match = re.search(r'\b(\d{7}[A-Z]?)\b', full_text)
         cld_file = doc_no_match.group(1) if doc_no_match else "UNKNOWN"
 
-    # 2. Extract Position Code (e.g. 2-2-7, 2-7-A, 2-8-C)
-    # The Position Code ALWAYS follows the 7-digit file number:
-    # e.g. "2010301 2-2-7" at the bottom margin or inside "FILE: 2010301 2-2-7"
-    pos_match = re.search(r'\b\d{7}[A-Z]?\s+(\d+)-(\d+)-([0-9A-Z]{1,2})\b', full_text)
-    if not pos_match:
-        pos_match = re.search(r'FILE:\s*\d{7}[A-Z]?\s+(\d+)-(\d+)-([0-9A-Z]{1,2})\b', full_text)
+    # Continuation sheets (e.g. 2010520A-1, 2010521A-1) are supplementary drawings and strictly NOT IO CLD
+    if re.search(r'\d{7}[A-Z]?-\d+', filename):
+        return {
+            "Source File": filename,
+            "CLD file": cld_file,
+            "CLD_No1": "N/A",
+            "CLD_No2": "N/A",
+            "CLD_No3": "N/A",
+            "Status": "NOT IO CLD",
+            "Model Card": "N/A"
+        }
 
-    # 3. Extract Model Card (e.g. IMCIS22, BRC300, etc.)
-    # Located at center of top row in the I/O block
+    # 2. Extract Position Code (e.g. 2-2-7, 2-7-A, 2-8-C, 2-7-C)
+    # In true IO CLD drawings, the Position Code appears on the same line as the document info
+    # or inside the bottom title block margin (y > 750 pt for portrait, y > 500 pt for landscape)
+    pos_match = None
+
+    # Priority 1: Search within individual lines for: <CLD_NO>[optional title/model] <No1>-<No2>-<No3>
+    # Prevents false concatenation across distant blocks (e.g. 2010945 \n 1-7-1 on opposite page ends)
+    line_pattern = re.compile(r'\b\d{7}[A-Z]?[^\n\r]*?\b(\d+)-(\d+)-([0-9A-Z]{1,2})\b')
+    for line in full_text.splitlines():
+        line_clean = line.strip()
+        m = line_pattern.search(line_clean)
+        if m:
+            pos_match = m
+            break
+
+    # Priority 2: Check bottom title block (margin y > 750 pt)
+    if not pos_match:
+        for b in blocks:
+            # b: (x0, y0, x1, y1, text, block_no, block_type)
+            if b[1] > 750 or b[3] > 750:
+                m = re.search(r'\b(\d+)-(\d+)-([0-9A-Z]{1,2})\b', b[4])
+                if m and "BRC" not in b[4]: # Filter out controller references
+                    pos_match = m
+                    break
+
+    # 3. Extract Model Card (e.g. IMCIS22, IMDSM04, IMASI23, IMDSI13)
+    # Strictly matches Bailey Infi90 / Symphony Plus I/O cards (IM...)
     card_match = re.search(r'\b(IM[A-Z0-9]+)\b', full_text)
-    if not card_match:
-        card_match = re.search(r'\b(BRC\d+)\b', full_text)
     model_card = card_match.group(1) if card_match else "N/A"
 
     if pos_match:
